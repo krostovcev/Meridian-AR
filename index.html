@@ -2,56 +2,39 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Быстрый Меридиан</title>
+  <title>Меридиан 100%</title>
   <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
   <style>
-    body { margin: 0; font-family: sans-serif; background: #111; }
-    
-    /* Обертка для интерфейса, чтобы он не пропадал в AR */
-    #ui-wrapper { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
-    #ui-wrapper > * { pointer-events: auto; }
-
-    #info-panel {
-      position: absolute; top: 5%; left: 5%; right: 5%;
-      background: rgba(0, 20, 40, 0.8); color: white;
-      padding: 15px; border-radius: 10px; text-align: center;
-      border: 1px solid #00FFFF;
+    body { margin: 0; font-family: sans-serif; overflow: hidden; }
+    /* Этот блок гарантирует, что текст будет виден поверх камеры */
+    #ui-wrapper { 
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
+      pointer-events: none; z-index: 9999; 
     }
-
-    #place-btn {
-      position: absolute; bottom: 10%; left: 50%; transform: translateX(-50%);
-      padding: 15px 30px; font-size: 16px; font-weight: bold;
-      background: #00FFFF; color: black; border: none; border-radius: 8px;
-      display: none; text-transform: uppercase; box-shadow: 0 0 15px #00FFFF;
+    #instruction {
+      position: absolute; bottom: 15%; width: 100%; text-align: center;
+      color: #00FFFF; font-size: 22px; font-weight: bold; 
+      text-shadow: 2px 2px 4px #000; text-transform: uppercase;
     }
   </style>
 </head>
 <body>
 
   <div id="ui-wrapper">
-    <div id="info-panel">
-      <b>Быстрый тест Меридиана</b><br>
-      Нажмите значок "AR" в правом нижнем углу экрана.
-    </div>
-    <button id="place-btn">ЗАФИКСИРОВАТЬ ЛИНИЮ</button>
+    <div id="instruction">Водите камерой по асфальту...</div>
   </div>
 
   <a-scene webxr="optionalFeatures: hit-test, dom-overlay; overlayElement: #ui-wrapper;" ar-hit-test="target:#reticle;">
     
-    <!-- Прицел для поиска асфальта -->
+    <!-- Тот самый прицел -->
     <a-entity id="reticle" visible="false">
       <a-ring radius-inner="0.05" radius-outer="0.07" color="#00FFFF" rotation="-90 0 0"></a-ring>
-      <!-- Стрелочка вперед -->
       <a-triangle color="red" vertex-a="0 0.1 0" vertex-b="-0.05 -0.05 0" vertex-c="0.05 -0.05 0" rotation="-90 0 0" position="0 0.01 -0.1"></a-triangle>
     </a-entity>
 
-    <!-- Сама линия меридиана -->
+    <!-- Сама линия (Длина 100м) -->
     <a-entity id="meridian" visible="false">
-      <!-- Длинная плоская полоса, лежащая на земле. Длина 100 метров. -->
-      <!-- position="0 0 -50" сдвигает ее так, чтобы она начиналась от ваших ног и уходила вдаль -->
       <a-box width="0.05" height="0.01" depth="100" color="#00FFFF" opacity="0.8" position="0 0 -50"></a-box>
-      
-      <!-- Красная точка под ногами -->
       <a-circle radius="0.15" color="#FF0055" rotation="-90 0 0" position="0 0.02 0"></a-circle>
     </a-entity>
 
@@ -62,42 +45,37 @@
     const scene = document.querySelector('a-scene');
     const reticle = document.getElementById('reticle');
     const meridian = document.getElementById('meridian');
-    const btn = document.getElementById('place-btn');
-    const info = document.getElementById('info-panel');
+    const text = document.getElementById('instruction');
+    let isPlaced = false;
 
-    scene.addEventListener('enter-vr', () => {
-      if (scene.is('ar-mode')) {
-        info.innerHTML = "Опустите камеру и <b>поводите ей по асфальту</b>.";
-      }
-    });
-
+    // Как только пол найден, меняем текст
     reticle.addEventListener('componentchanged', (evt) => {
-      if (evt.detail.name === 'visible' && reticle.getAttribute('visible')) {
-        info.innerHTML = "Асфальт найден!<br><b>Повернитесь лицом на Север</b> и нажмите кнопку.";
-        btn.style.display = 'block';
+      if (evt.detail.name === 'visible' && reticle.getAttribute('visible') && !isPlaced) {
+        text.innerHTML = "ПОЛ НАЙДЕН!<br><span style='color:#00FF00'>ТАПНИТЕ В ЛЮБОЕ МЕСТО ЭКРАНА</span>";
       }
     });
 
-    btn.addEventListener('click', () => {
-      // Берем точку на земле, куда смотрит прицел
+    // Реакция на ТАП ПО ЭКРАНУ
+    window.addEventListener('touchstart', () => {
+      // Защита: чтобы линия не ставилась, если пол еще не найден или линия уже стоит
+      if (!reticle.getAttribute('visible') || isPlaced) return;
+      isPlaced = true;
+
+      // Берем координаты круга
       const pos = reticle.object3D.position;
-      
-      // Берем поворот телефона (куда вы сейчас смотрите)
+      // Берем поворот телефона
       const camRotY = document.querySelector('[camera]').object3D.rotation.y;
 
-      // Ставим линию в эту точку и поворачиваем туда, куда смотрите вы
+      // Ставим линию!
       meridian.object3D.position.set(pos.x, pos.y, pos.z);
       meridian.object3D.rotation.set(0, camRotY, 0);
 
-      // Включаем видимость
       meridian.setAttribute('visible', 'true');
       reticle.setAttribute('visible', 'false');
-      btn.style.display = 'none';
       
-      info.innerHTML = "<b style='color:#00FF00;'>МЕРИДИАН УСТАНОВЛЕН</b><br>Попробуйте пройтись вдоль линии!";
-      info.style.borderColor = "#00FF00";
-
-      // Отключаем поиск асфальта, фиксируем мир
+      text.innerHTML = "<span style='color:#00FF00'>МЕРИДИАН УСТАНОВЛЕН!</span>";
+      
+      // Отключаем сканер (фиксируем сцену)
       scene.removeAttribute('ar-hit-test');
     });
   </script>
