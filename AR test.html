@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>AR Line Test: Юг-Север</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            pointer-events: none;
+            z-index: 10;
+            font-size: 14px;
+            backdrop-filter: blur(5px);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        #status {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            background: rgba(0,0,0,0.6);
+            color: #ffaa00;
+            padding: 8px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 12px;
+            pointer-events: none;
+            z-index: 10;
+            font-family: monospace;
+        }
+        @media (orientation: portrait) {
+            #info { font-size: 12px; top: 10px; left: 10px; }
+            #status { font-size: 10px; bottom: 10px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        🧭 AR линия | ЮГ → СЕВЕР<br>
+        Точка: 59.845503, 30.327005
+    </div>
+    <div id="status">
+        🌐 Инициализация камеры и датчиков...
+    </div>
+
+    <!-- Импорт Three.js и дополнений -->
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
+                "three/examples/jsm/": "https://unpkg.com/three@0.128.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'; // только для отладки не используется
+        import { CSS2DRenderer, CSS2DObject } from 'three/examples/jsm/renderers/CSS2DRenderer.js';
+
+        // --- Координаты центра (фиксированная точка) ---
+        const TARGET_LAT = 59.845503;
+        const TARGET_LON = 30.327005;
+        
+        // --- Линия с юга на север ---
+        // Южная точка (на 30 метров южнее)
+        // Северная точка (на 30 метров севернее)
+        // В средних широтах 1 градус широты ≈ 111 км, поэтому 30 метров = 0.00027 градуса
+        const offsetDeg = 0.00027; // ~30 метров
+        const southPoint = { lat: TARGET_LAT - offsetDeg, lon: TARGET_LON };
+        const northPoint = { lat: TARGET_LAT + offsetDeg, lon: TARGET_LON };
+        
+        // Дополнительная метка в центре
+        const centerPoint = { lat: TARGET_LAT, lon: TARGET_LON };
+        
+        // Конвертация GPS (lat, lon, alt) в локальную систему Three.js (метры)
+        // Используем простую проекцию: ось X на восток, ось Z на север, Y вверх.
+        // Относительная точка отсчета — центр (TARGET_LAT, TARGET_LON), высота 0.
+        function gpsToMeters(lat, lon, refLat, refLon) {
+            const R = 6371000; // радиус Земли в метрах
+            const dLat = (lat - refLat) * Math.PI / 180;
+            const dLon = (lon - refLon) * Math.PI / 180;
+            const x = dLon * Math.cos(refLat * Math.PI / 180) * R;
+            const z = dLat * R;
+            return { x, z };
+        }
+        
+        // Получаем позиции для юга, севера и центра
+        const ref = { lat: TARGET_LAT, lon: TARGET_LON };
+        const southPos = gpsToMeters(southPoint.lat, southPoint.lon, ref.lat, ref.lon);
+        const northPos = gpsToMeters(northPoint.lat, northPoint.lon, ref.lat, ref.lon);
+        const centerPos = gpsToMeters(centerPoint.lat, centerPoint.lon, ref.lat, ref.lon);
+        
+        // --- Инициализация Three.js с камерой для AR (без фиксации ориентации, но с устройством)---
+        const scene = new THREE.Scene();
+        scene.background = null; // прозрачный для видео
+        
+        // Камера: стандартная перспективная, будет обновляться по данным с устройства
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 1.6, 0); // рост человека
+        
+        // Рендерер WebGL с прозрачностью
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x000000, 0); // прозрачный фон
+        document.body.appendChild(renderer.domElement);
+        
+        // CSS2 рендерер для текстовых меток (поверх)
+        const labelRenderer = new CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.left = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        document.body.appendChild(labelRenderer.domElement);
+        
+        // --- Создание линии: толстая красная линия между SOUTH и NORTH ---
+        const points = [];
+        points.push(new THREE.Vector3(southPos.x, 0, southPos.z));
+        points.push(new THREE.Vector3(northPos.x, 0, northPos.z));
+        const lineGeometry = new THREE.BufferGeometry().setFromPoints(points);
+        const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff3366, linewidth: 5 });
+        // Для linewidth в WebGL может не поддерживаться везде, добавим трубку для наглядности (цилиндр)
+        const lineObject = new THREE.Line(lineGeometry, lineMaterial);
+        scene.add(lineObject);
+        
+        // Добавим яркие сферы на концах линии и в центре
+        const sphereMat = new THREE.MeshStandardMaterial({ color: 0xff6600, emissive: 0x442200 });
+        const southSphere = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 16), sphereMat);
+        southSphere.position.set(southPos.x, 0.2, southPos.z);
+        scene.add(southSphere);
+        
+        const northSphere = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 16), sphereMat);
+        northSphere.position.set(northPos.x, 0.2, northPos.z);
+        scene.add(northSphere);
+        
+        const centerSphere = new THREE.Mesh(new THREE.SphereGeometry(0.6, 32, 32), new THREE.MeshStandardMaterial({ color: 0x33ff66, emissive: 0x116622 }));
+        centerSphere.position.set(centerPos.x, 0.1, centerPos.z);
+        scene.add(centerSphere);
+        
+        // Добавим тонкие вспомогательные цилиндры (трубки), чтобы линия была заметнее
+        const direction = new THREE.Vector3().subVectors(points[1], points[0]);
+        const length = direction.length();
+        const cylinderGeo = new THREE.CylinderGeometry(0.1, 0.1, length, 6);
+        const cylinderMat = new THREE.MeshStandardMaterial({ color: 0xff8888 });
+        const cylinder = new THREE.Mesh(cylinderGeo, cylinderMat);
+        cylinder.position.copy(points[0]);
+        cylinder.position.add(points[1]).multiplyScalar(0.5);
+        cylinder.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), direction.clone().normalize());
+        scene.add(cylinder);
+        
+        // --- Текстовые метки (CSS2D) ---
+        function makeLabel(text, color, position) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            div.style.color = color;
+            div.style.fontSize = '18px';
+            div.style.fontWeight = 'bold';
+            div.style.textShadow = '1px 1px 0px black';
+            div.style.background = 'rgba(0,0,0,0.6)';
+            div.style.padding = '4px 8px';
+            div.style.borderRadius = '20px';
+            div.style.borderLeft = `4px solid ${color}`;
+            div.style.fontFamily = 'sans-serif';
+            div.style.backdropFilter = 'blur(4px)';
+            const label = new CSS2DObject(div);
+            label.position.copy(position);
+            return label;
+        }
+        
+        const southLabel = makeLabel('🔴 ЮГ', '#ff8888', new THREE.Vector3(southPos.x, 1.2, southPos.z));
+        const northLabel = makeLabel('🔵 СЕВЕР', '#88aaff', new THREE.Vector3(northPos.x, 1.2, northPos.z));
+        const centerLabel = makeLabel('📍 ЦЕНТР 59.845503,30.327005', '#aaffaa', new THREE.Vector3(centerPos.x, 1.0, centerPos.z));
+        scene.add(southLabel);
+        scene.add(northLabel);
+        scene.add(centerLabel);
+        
+        // Добавим стрелки направления (небольшие конусы) на север и юг
+        const arrowColor = 0xffaa44;
+        const arrowMat = new THREE.MeshStandardMaterial({ color: arrowColor });
+        // Стрелка на север (конус указывает вверх и на север? сделаем просто конус на конце линии)
+        const northArrow = new THREE.Mesh(new THREE.ConeGeometry(0.4, 1.2, 8), arrowMat);
+        northArrow.position.set(northPos.x, 0.8, northPos.z);
+        northArrow.rotation.x = 0;
+        scene.add(northArrow);
+        
+        // --- Освещение для сфер и цилиндров ---
+        const ambientLight = new THREE.AmbientLight(0x404060);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+        dirLight.position.set(1, 2, 1);
+        scene.add(dirLight);
+        const backLight = new THREE.PointLight(0x4466cc, 0.3);
+        backLight.position.set(0, 2, -2);
+        scene.add(backLight);
+        
+        // --- AR-видеопоток с камеры ---
+        const video = document.createElement('video');
+        video.setAttribute('autoplay', '');
+        video.setAttribute('playsinline', '');
+        video.style.position = 'absolute';
+        video.style.top = '0';
+        video.style.left = '0';
+        video.style.width = '100%';
+        video.style.height = '100%';
+        video.style.objectFit = 'cover';
+        video.style.zIndex = '-1';
+        document.body.appendChild(video);
+        
+        // Текстура из видео
+        const videoTexture = new THREE.VideoTexture(video);
+        videoTexture.minFilter = THREE.LinearFilter;
+        videoTexture.magFilter = THREE.LinearFilter;
+        
+        // Плоскость на всю сцену (фон), но лучше использовать полноэкранный quad, но для простоты сделаем сферу? Нет, простой фон через CSS проще, но для корректной прозрачности three.js:
+        // Создадим сцену с видеофоном: добавим плоскость позади, которая всегда повернута к камере? Нет, проще залить body видео, а three.js поверх.
+        // Уже есть video элемент позади, а three.js рендерит поверх с прозрачным фоном. Отлично.
+        
+        // Запрос доступа к камере
+        async function initCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                video.srcObject = stream;
+                await video.play();
+                updateStatus('📷 Камера работает. Ожидание датчиков...', '#88ff88');
+            } catch (err) {
+                console.error('Ошибка камеры:', err);
+                updateStatus('❌ Нет доступа к камере. AR не работает. Проверьте разрешения.', '#ff8888');
+                document.body.style.background = '#222';
+            }
+        }
+        
+        // --- Обработка ориентации устройства (компас + наклон) для AR ---
+        // Используем DeviceOrientationEvent с учетом Alpha/Beta/Gamma
+        // Нужно поворачивать камеру Three.js в противоположную сторону, чтобы линии оставались в реальном мире.
+        // Проще: группируем сцену, вращаем ее или вращаем камеру. Будем вращать камеру.
+        
+        let alpha = 0, beta = 0, gamma = 0;
+        let orientationReady = false;
+        
+        function handleOrientation(event) {
+            // alpha: 0-360, направление на север (компас)
+            // beta: -180..180, наклон вперед/назад
+            // gamma: -90..90, наклон влево/вправо
+            alpha = event.alpha; // относительно севера
+            beta = event.beta;
+            gamma = event.gamma;
+            orientationReady = true;
+            updateStatus(`🧭 Компас: ${Math.round(alpha)}° | Наклон: ${Math.round(beta)}°`, '#aaffaa');
+        }
+        
+        function requestOrientation() {
+            if (DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                // iOS 13+ требует явного разрешения
+                const statusDiv = document.getElementById('status');
+                statusDiv.innerHTML = '📱 Нажмите на экран для разрешения доступа к ориентации 🌐';
+                statusDiv.style.cursor = 'pointer';
+                statusDiv.style.backgroundColor = 'rgba(0,0,0,0.8)';
+                statusDiv.onclick = async () => {
+                    try {
+                        const permissionState = await DeviceOrientationEvent.requestPermission();
+                        if (permissionState === 'granted') {
+                            window.addEventListener('deviceorientation', handleOrientation);
+                            statusDiv.onclick = null;
+                            updateStatus('✅ Доступ к датчикам получен', '#88ff88');
+                        }
+                    } catch (e) {
+                        console.warn(e);
+                        updateStatus('❌ Разрешение отклонено. Линия не будет привязана к компасу', '#ff8888');
+                    }
+                };
+            } else {
+                // Android и десктоп (на десктопе не будет компаса, но тест)
+                window.addEventListener('deviceorientation', handleOrientation);
+                updateStatus('🔄 Датчики активны (если есть компас)', '#ffaa66');
+            }
+        }
+        
+        function updateStatus(msg, color = '#ffaa00') {
+            const el = document.getElementById('status');
+            if (el) {
+                el.innerHTML = msg;
+                el.style.color = color;
+            }
+        }
+        
+        // Переменные для плавного обновления камеры (фильтр)
+        let currentAlpha = 0;
+        
+        // Функция обновления камеры на основе альфа (азимут) и бета/гамма (наклон)
+        // Нам нужно, чтобы линия Юг-Север была сориентирована в пространстве: северное направление должно совпадать с реальным севером.
+        // Вращаем камеру вокруг оси Y: угол = -alpha (так как alpha=0 на север, а камера смотрит в -Z по умолчанию? поправим)
+        // В Three.js по умолчанию камера смотрит в -Z. Чтобы север совпал с -Z при alpha=0, нужно повернуть камеру.
+        // Упростим: камера всегда смотрит на север после поворота на angle = alpha градусов (но в opposite direction?)
+        // Сделаем так: группируем все объекты, поворачиваем группу относительно камеры? Проще: вращаем всю сцену вокруг камеры.
+        // Но сохраним простоту: сцена статична, вращаем камеру вокруг оси Y на угол, равный alpha.
+        // При alpha=0 (север), камера должна смотреть на север (вдоль -Z). Поэтому поворот камеры по Y: -alpha в радианах.
+        function updateCameraRotation() {
+            if (!orientationReady) return;
+            // фильтр для плавности
+            currentAlpha = currentAlpha * 0.95 + alpha * 0.05;
+            const rad = -currentAlpha * Math.PI / 180;
+            camera.rotation.order = 'YXZ';
+            camera.rotation.x = -beta * Math.PI / 180;
+            camera.rotation.z = -gamma * Math.PI / 180;
+            camera.rotation.y = rad;
+            // Также небольшая коррекция высоты камеры (бета влияет на наклон)
+        }
+        
+        // Добавим также геолокацию для точного позиционирования? Для простоты линия зафиксирована относительно начальной точки.
+        // Если нужно смещение по GPS, можно получить текущие координаты и сместить всю сцену. Но для демонстрации принципа достаточно фиксированной линии.
+        
+        // Анимационный цикл
+        function animate() {
+            updateCameraRotation();
+            camera.updateMatrixWorld();
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+        
+        // Старт
+        async function start() {
+            await initCamera();
+            requestOrientation();
+            animate();
+            // Запускаем таймер для регулярного вывода статуса
+            setInterval(() => {
+                if (!orientationReady) {
+                    updateStatus('🔄 Ждем данные с компаса... Нажмите на экран, если требуется разрешение', '#ffaa66');
+                }
+            }, 3000);
+        }
+        
+        start();
+        
+        // Обработка изменения размера экрана
+        window.addEventListener('resize', onWindowResize, false);
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        }
+        
+        // Сообщение о необходимости HTTPS (GitHub Pages его предоставляет)
+        if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+            updateStatus('⚠️ Для AR требуется HTTPS. Загрузите через GitHub Pages или localhost', '#ff8888');
+        }
+    </script>
+</body>
+</html>
