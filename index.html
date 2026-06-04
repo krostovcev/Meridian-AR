@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Меридиан | VFX Эффекты</title>
+  <title>Меридиан | Сквозной Поток</title>
   <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
   <style>
     body { margin: 0; font-family: sans-serif; background: #000; overflow: hidden; }
@@ -35,40 +35,41 @@
       <a-circle radius="0.005" color="#FF0000" rotation="-90 0 0" material="shader: flat;"></a-circle>
     </a-entity>
 
-    <!-- === АРТ-ОБЪЕКТ МЕРИДИАНА === -->
+    <!-- === СКВОЗНОЙ МЕРИДИАН === -->
     <a-entity id="meridian" visible="false">
       
-      <!-- 1. ТОЧКА СТАРТА (Компас) -->
-      <!-- Внешнее вращающееся кольцо -->
+      <!-- 1. НУЛЕВАЯ ТОЧКА (Маркер стояния) -->
+      <!-- Оставляем красивый вращающийся компас в месте клика -->
       <a-ring radius-inner="0.3" radius-outer="0.35" color="#00FFFF" rotation="-90 0 0" position="0 0.001 0" 
               material="shader: flat; transparent: true; opacity: 0.8;"
               animation="property: rotation; to: -90 360 0; dur: 4000; loop: true; easing: linear;"></a-ring>
-      <!-- Внутреннее пульсирующее ядро -->
       <a-circle radius="0.1" color="#FFFFFF" rotation="-90 0 0" position="0 0.002 0" 
                 material="shader: flat; transparent: true; opacity: 0.6; blending: additive;"
                 animation="property: scale; dir: alternate; to: 1.5 1.5 1.5; dur: 800; loop: true;"></a-circle>
 
-      <!-- 2. ГЛАВНАЯ ЛИНИЯ (Голограмма) -->
-      <!-- Широкий мягкий ореол (Glow) -->
-      <a-plane width="0.4" height="100" color="#0088FF" rotation="-90 0 0" position="0 0.001 -50" 
+      <!-- 2. ГЛАВНАЯ ЛИНИЯ (200 метров) -->
+      <!-- Теперь position "0 0 0" (центр), значит линия торчит на 100м вперед и 100м назад -->
+      <a-plane width="0.4" height="200" color="#0088FF" rotation="-90 0 0" position="0 0.001 0" 
                material="shader: flat; transparent: true; opacity: 0.3; blending: additive;"></a-plane>
-      <!-- Узкий ореол -->
-      <a-plane width="0.15" height="100" color="#00FFFF" rotation="-90 0 0" position="0 0.002 -50" 
+      <a-plane width="0.15" height="200" color="#00FFFF" rotation="-90 0 0" position="0 0.002 0" 
                material="shader: flat; transparent: true; opacity: 0.5; blending: additive;"></a-plane>
-      <!-- Жесткое яркое ядро линии (Бело-голубое) -->
-      <a-plane width="0.03" height="100" color="#FFFFFF" rotation="-90 0 0" position="0 0.003 -50" 
+      <a-plane width="0.03" height="200" color="#FFFFFF" rotation="-90 0 0" position="0 0.003 0" 
                material="shader: flat; transparent: true; opacity: 0.9; blending: additive;"></a-plane>
 
-      <!-- 3. БЕГУЩАЯ ЭНЕРГИЯ (Анимация движения на Север) -->
-      <!-- Этот объект будет пробегать 100 метров за 2 секунды и начинать заново -->
-      <a-entity position="0 0 0" animation="property: position; to: 0 0 -100; dur: 2000; loop: true; easing: linear;">
-        <a-plane width="0.08" height="3" color="#FFFFFF" rotation="-90 0 0" position="0 0.004 0" 
+      <!-- 3. БЕГУЩАЯ ЭНЕРГИЯ (Сквозной поток) -->
+      <!-- Теперь сгустки стартуют с Z=100 (за спиной) и летят до Z=-100 (вперед) -->
+      <a-entity animation="property: position; from: 0 0 100; to: 0 0 -100; dur: 3500; loop: true; easing: linear;">
+        <a-plane width="0.08" height="4" color="#FFFFFF" rotation="-90 0 0" position="0 0.004 0" 
                  material="shader: flat; transparent: true; opacity: 0.9; blending: additive;"></a-plane>
       </a-entity>
       
-      <!-- Второй сгусток энергии (бежит с задержкой, чтобы их было много) -->
-      <a-entity position="0 0 0" animation="property: position; to: 0 0 -100; dur: 2000; loop: true; easing: linear; delay: 1000;">
-        <a-plane width="0.08" height="3" color="#FFFFFF" rotation="-90 0 0" position="0 0.004 0" 
+      <a-entity animation="property: position; from: 0 0 100; to: 0 0 -100; dur: 3500; loop: true; easing: linear; delay: 1166;">
+        <a-plane width="0.08" height="4" color="#FFFFFF" rotation="-90 0 0" position="0 0.004 0" 
+                 material="shader: flat; transparent: true; opacity: 0.9; blending: additive;"></a-plane>
+      </a-entity>
+
+      <a-entity animation="property: position; from: 0 0 100; to: 0 0 -100; dur: 3500; loop: true; easing: linear; delay: 2333;">
+        <a-plane width="0.08" height="4" color="#FFFFFF" rotation="-90 0 0" position="0 0.004 0" 
                  material="shader: flat; transparent: true; opacity: 0.9; blending: additive;"></a-plane>
       </a-entity>
 
@@ -84,14 +85,12 @@
     const info = document.getElementById('info-panel');
     let linePlaced = false;
 
-    // Реакция на нахождение пола
     reticle.addEventListener('componentchanged', (evt) => {
       if (evt.detail.name === 'visible' && reticle.getAttribute('visible') && !linePlaced) {
-        info.innerHTML = "Асфальт захвачен!<br><span style='font-size: 12px; color: #aaa;'>Тапните по экрану, чтобы запустить меридиан</span>";
+        info.innerHTML = "Асфальт захвачен!<br><span style='font-size: 12px; color: #aaa;'>Тапните по экрану, чтобы запустить поток</span>";
       }
     });
 
-    // Реакция на ТАП
     window.addEventListener('touchstart', () => {
       if (!reticle.getAttribute('visible') || linePlaced) return;
       linePlaced = true;
@@ -107,7 +106,7 @@
       
       info.style.background = "rgba(0, 30, 10, 0.85)";
       info.style.borderColor = "#00FF00";
-      info.innerHTML = "<span style='color:#00FF00'>ПОТОК АКТИВИРОВАН</span><br><span style='font-size: 12px; color: #aaa;'>Следуйте за энергией</span>";
+      info.innerHTML = "<span style='color:#00FF00'>ПОТОК АКТИВИРОВАН</span><br><span style='font-size: 12px; color: #aaa;'>Меридиан проходит сквозь вас</span>";
       
       scene.removeAttribute('ar-hit-test');
     });
