@@ -2,40 +2,76 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Меридиан 100%</title>
+  <title>Меридиан | VFX Эффекты</title>
   <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
   <style>
-    body { margin: 0; font-family: sans-serif; overflow: hidden; }
-    /* Этот блок гарантирует, что текст будет виден поверх камеры */
-    #ui-wrapper { 
-      position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-      pointer-events: none; z-index: 9999; 
+    body { margin: 0; font-family: sans-serif; background: #000; overflow: hidden; }
+    
+    #ui-wrapper { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+    #ui-wrapper > * { pointer-events: auto; }
+
+    #info-panel {
+      position: absolute; bottom: 10%; left: 5%; right: 5%;
+      background: rgba(0, 10, 25, 0.85); color: #00FFFF;
+      padding: 15px; border-radius: 12px; text-align: center;
+      font-size: 16px; font-weight: bold; border: 1px solid #00FFFF;
+      box-shadow: 0 0 20px rgba(0, 255, 255, 0.4); text-transform: uppercase;
     }
-    #instruction {
-      position: absolute; bottom: 15%; width: 100%; text-align: center;
-      color: #00FFFF; font-size: 22px; font-weight: bold; 
-      text-shadow: 2px 2px 4px #000; text-transform: uppercase;
-    }
+    .blink { animation: blinker 1s linear infinite; }
+    @keyframes blinker { 50% { opacity: 0; } }
   </style>
 </head>
 <body>
 
   <div id="ui-wrapper">
-    <div id="instruction">Водите камерой по асфальту...</div>
+    <div id="info-panel">Сканирование...<br><span class="blink" style="font-size: 12px; color: #aaa;">Направьте камеру на асфальт</span></div>
   </div>
 
   <a-scene webxr="optionalFeatures: hit-test, dom-overlay; overlayElement: #ui-wrapper;" ar-hit-test="target:#reticle;">
     
-    <!-- Тот самый прицел -->
+    <!-- Прицел -->
     <a-entity id="reticle" visible="false">
-      <a-ring radius-inner="0.05" radius-outer="0.07" color="#00FFFF" rotation="-90 0 0"></a-ring>
-      <a-triangle color="red" vertex-a="0 0.1 0" vertex-b="-0.05 -0.05 0" vertex-c="0.05 -0.05 0" rotation="-90 0 0" position="0 0.01 -0.1"></a-triangle>
+      <a-ring radius-inner="0.05" radius-outer="0.06" color="#00FFFF" rotation="-90 0 0" material="shader: flat;"></a-ring>
+      <a-circle radius="0.005" color="#FF0000" rotation="-90 0 0" material="shader: flat;"></a-circle>
     </a-entity>
 
-    <!-- Сама линия (Длина 100м) -->
+    <!-- === АРТ-ОБЪЕКТ МЕРИДИАНА === -->
     <a-entity id="meridian" visible="false">
-      <a-box width="0.05" height="0.01" depth="100" color="#00FFFF" opacity="0.8" position="0 0 -50"></a-box>
-      <a-circle radius="0.15" color="#FF0055" rotation="-90 0 0" position="0 0.02 0"></a-circle>
+      
+      <!-- 1. ТОЧКА СТАРТА (Компас) -->
+      <!-- Внешнее вращающееся кольцо -->
+      <a-ring radius-inner="0.3" radius-outer="0.35" color="#00FFFF" rotation="-90 0 0" position="0 0.001 0" 
+              material="shader: flat; transparent: true; opacity: 0.8;"
+              animation="property: rotation; to: -90 360 0; dur: 4000; loop: true; easing: linear;"></a-ring>
+      <!-- Внутреннее пульсирующее ядро -->
+      <a-circle radius="0.1" color="#FFFFFF" rotation="-90 0 0" position="0 0.002 0" 
+                material="shader: flat; transparent: true; opacity: 0.6; blending: additive;"
+                animation="property: scale; dir: alternate; to: 1.5 1.5 1.5; dur: 800; loop: true;"></a-circle>
+
+      <!-- 2. ГЛАВНАЯ ЛИНИЯ (Голограмма) -->
+      <!-- Широкий мягкий ореол (Glow) -->
+      <a-plane width="0.4" height="100" color="#0088FF" rotation="-90 0 0" position="0 0.001 -50" 
+               material="shader: flat; transparent: true; opacity: 0.3; blending: additive;"></a-plane>
+      <!-- Узкий ореол -->
+      <a-plane width="0.15" height="100" color="#00FFFF" rotation="-90 0 0" position="0 0.002 -50" 
+               material="shader: flat; transparent: true; opacity: 0.5; blending: additive;"></a-plane>
+      <!-- Жесткое яркое ядро линии (Бело-голубое) -->
+      <a-plane width="0.03" height="100" color="#FFFFFF" rotation="-90 0 0" position="0 0.003 -50" 
+               material="shader: flat; transparent: true; opacity: 0.9; blending: additive;"></a-plane>
+
+      <!-- 3. БЕГУЩАЯ ЭНЕРГИЯ (Анимация движения на Север) -->
+      <!-- Этот объект будет пробегать 100 метров за 2 секунды и начинать заново -->
+      <a-entity position="0 0 0" animation="property: position; to: 0 0 -100; dur: 2000; loop: true; easing: linear;">
+        <a-plane width="0.08" height="3" color="#FFFFFF" rotation="-90 0 0" position="0 0.004 0" 
+                 material="shader: flat; transparent: true; opacity: 0.9; blending: additive;"></a-plane>
+      </a-entity>
+      
+      <!-- Второй сгусток энергии (бежит с задержкой, чтобы их было много) -->
+      <a-entity position="0 0 0" animation="property: position; to: 0 0 -100; dur: 2000; loop: true; easing: linear; delay: 1000;">
+        <a-plane width="0.08" height="3" color="#FFFFFF" rotation="-90 0 0" position="0 0.004 0" 
+                 material="shader: flat; transparent: true; opacity: 0.9; blending: additive;"></a-plane>
+      </a-entity>
+
     </a-entity>
 
     <a-entity camera></a-entity>
@@ -45,37 +81,34 @@
     const scene = document.querySelector('a-scene');
     const reticle = document.getElementById('reticle');
     const meridian = document.getElementById('meridian');
-    const text = document.getElementById('instruction');
-    let isPlaced = false;
+    const info = document.getElementById('info-panel');
+    let linePlaced = false;
 
-    // Как только пол найден, меняем текст
+    // Реакция на нахождение пола
     reticle.addEventListener('componentchanged', (evt) => {
-      if (evt.detail.name === 'visible' && reticle.getAttribute('visible') && !isPlaced) {
-        text.innerHTML = "ПОЛ НАЙДЕН!<br><span style='color:#00FF00'>ТАПНИТЕ В ЛЮБОЕ МЕСТО ЭКРАНА</span>";
+      if (evt.detail.name === 'visible' && reticle.getAttribute('visible') && !linePlaced) {
+        info.innerHTML = "Асфальт захвачен!<br><span style='font-size: 12px; color: #aaa;'>Тапните по экрану, чтобы запустить меридиан</span>";
       }
     });
 
-    // Реакция на ТАП ПО ЭКРАНУ
+    // Реакция на ТАП
     window.addEventListener('touchstart', () => {
-      // Защита: чтобы линия не ставилась, если пол еще не найден или линия уже стоит
-      if (!reticle.getAttribute('visible') || isPlaced) return;
-      isPlaced = true;
+      if (!reticle.getAttribute('visible') || linePlaced) return;
+      linePlaced = true;
 
-      // Берем координаты круга
       const pos = reticle.object3D.position;
-      // Берем поворот телефона
       const camRotY = document.querySelector('[camera]').object3D.rotation.y;
 
-      // Ставим линию!
       meridian.object3D.position.set(pos.x, pos.y, pos.z);
       meridian.object3D.rotation.set(0, camRotY, 0);
 
       meridian.setAttribute('visible', 'true');
       reticle.setAttribute('visible', 'false');
       
-      text.innerHTML = "<span style='color:#00FF00'>МЕРИДИАН УСТАНОВЛЕН!</span>";
+      info.style.background = "rgba(0, 30, 10, 0.85)";
+      info.style.borderColor = "#00FF00";
+      info.innerHTML = "<span style='color:#00FF00'>ПОТОК АКТИВИРОВАН</span><br><span style='font-size: 12px; color: #aaa;'>Следуйте за энергией</span>";
       
-      // Отключаем сканер (фиксируем сцену)
       scene.removeAttribute('ar-hit-test');
     });
   </script>
