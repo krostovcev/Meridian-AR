@@ -1,38 +1,68 @@
 <!DOCTYPE html>
-<html>
+<html lang="ru">
 <head>
-    <meta charset="utf-8">
+    <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>AR Line Test</title>
+    <title>AR Роза ветров - Линия Юг/Север</title>
     <style>
-        body { margin: 0; overflow: hidden; font-family: Arial; }
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', sans-serif; }
         #info {
             position: absolute;
             top: 20px;
             left: 20px;
-            background: black;
+            background: rgba(0,0,0,0.7);
             color: white;
-            padding: 10px;
+            padding: 10px 15px;
             border-radius: 8px;
             z-index: 100;
             font-size: 14px;
+            backdrop-filter: blur(5px);
+            pointer-events: none;
         }
         #status {
             position: absolute;
             bottom: 20px;
             left: 20px;
-            background: black;
-            color: yellow;
+            right: 20px;
+            background: rgba(0,0,0,0.7);
+            color: #ffaa00;
             padding: 8px;
             border-radius: 8px;
+            text-align: center;
+            font-size: 14px;
+            font-family: monospace;
             z-index: 100;
-            font-size: 12px;
+            backdrop-filter: blur(5px);
+            pointer-events: none;
+        }
+        #compass {
+            position: absolute;
+            bottom: 80px;
+            right: 20px;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 40px;
+            font-size: 18px;
+            font-weight: bold;
+            z-index: 100;
+            font-family: monospace;
+            backdrop-filter: blur(5px);
+            pointer-events: none;
         }
     </style>
 </head>
 <body>
-    <div id="info">📍 AR Линия ЮГ → СЕВЕР<br>59.845503, 30.327005</div>
-    <div id="status">🟡 Загрузка...</div>
+    <div id="info">
+        🧭 Роза ветров | Линия ЮГ → СЕВЕР<br>
+        Центр: 59.841968, 30.325292
+    </div>
+    <div id="status">
+        🔄 Загрузка...
+    </div>
+    <div id="compass">
+        🧭 ---°
+    </div>
 
     <script type="importmap">
         {
@@ -46,13 +76,24 @@
         import * as THREE from 'three';
 
         const statusDiv = document.getElementById('status');
+        const compassDiv = document.getElementById('compass');
         
-        // Координаты
-        const TARGET_LAT = 59.841968;
-        const TARGET_LON = 30.325292;
-        const offsetDeg = 0.00027;
+        // ========== НОВЫЕ КООРДИНАТЫ ==========
+        const CENTER_LAT = 59.841968;
+        const CENTER_LON = 30.325292;
         
-        // Конвертация GPS в метры
+        // Длина линии от центра до края = 30 метров
+        const LINE_LENGTH_M = 30; // метров от центра до юга и до севера
+        
+        // Конвертация: 1 метр ≈ 0.000009 градуса широты
+        const METER_TO_DEG = 0.000009;
+        const offsetDeg = LINE_LENGTH_M * METER_TO_DEG;
+        
+        // Точки: юг (ниже центра) и север (выше центра)
+        const southPoint = { lat: CENTER_LAT - offsetDeg, lon: CENTER_LON };
+        const northPoint = { lat: CENTER_LAT + offsetDeg, lon: CENTER_LON };
+        
+        // Конвертация GPS в метры (локальная система)
         function gpsToMeters(lat, lon, refLat, refLon) {
             const R = 6371000;
             const dLat = (lat - refLat) * Math.PI / 180;
@@ -62,11 +103,12 @@
             return { x, z };
         }
         
-        const ref = { lat: TARGET_LAT, lon: TARGET_LON };
-        const south = gpsToMeters(TARGET_LAT - offsetDeg, TARGET_LON, ref.lat, ref.lon);
-        const north = gpsToMeters(TARGET_LAT + offsetDeg, TARGET_LON, ref.lat, ref.lon);
+        const ref = { lat: CENTER_LAT, lon: CENTER_LON };
+        const southPos = gpsToMeters(southPoint.lat, southPoint.lon, ref.lat, ref.lon);
+        const northPos = gpsToMeters(northPoint.lat, northPoint.lon, ref.lat, ref.lon);
+        const centerPos = gpsToMeters(CENTER_LAT, CENTER_LON, ref.lat, ref.lon);
         
-        // Сцена
+        // --- Сцена ---
         const scene = new THREE.Scene();
         scene.background = null;
         
@@ -78,45 +120,147 @@
         renderer.setClearColor(0x000000, 0);
         document.body.appendChild(renderer.domElement);
         
-        // Освещение
-        const light = new THREE.AmbientLight(0xffffff);
-        scene.add(light);
+        // --- Освещение ---
+        const ambientLight = new THREE.AmbientLight(0x404060);
+        scene.add(ambientLight);
         const dirLight = new THREE.DirectionalLight(0xffffff, 1);
         dirLight.position.set(1, 2, 1);
         scene.add(dirLight);
+        const backLight = new THREE.PointLight(0x4466cc, 0.3);
+        backLight.position.set(0, 2, -2);
+        scene.add(backLight);
         
-        // Линия Юг-Север
-        const points = [
-            new THREE.Vector3(south.x, 0, south.z),
-            new THREE.Vector3(north.x, 0, north.z)
+        // ========== РОЗА ВЕТРОВ ==========
+        // Создаём группу для розы, чтобы она всегда была в центре и повёрнута на север
+        const compassRoseGroup = new THREE.Group();
+        
+        // 1. Красная линия ЮГ-СЕВЕР (проходит через центр)
+        const linePoints = [
+            new THREE.Vector3(southPos.x, 0, southPos.z),
+            new THREE.Vector3(centerPos.x, 0, centerPos.z),
+            new THREE.Vector3(northPos.x, 0, northPos.z)
         ];
-        const geometry = new THREE.BufferGeometry().setFromPoints(points);
-        const material = new THREE.LineBasicMaterial({ color: 0xff3366 });
-        const line = new THREE.Line(geometry, material);
-        scene.add(line);
+        const lineGeometry = new THREE.BufferGeometry().setFromPoints(linePoints);
+        const lineMaterial = new THREE.LineBasicMaterial({ color: 0xff3366, linewidth: 3 });
+        const mainLine = new THREE.Line(lineGeometry, lineMaterial);
+        compassRoseGroup.add(mainLine);
         
-        // Толстая линия (цилиндр)
-        const direction = new THREE.Vector3().subVectors(points[1], points[0]);
-        const length = direction.length();
-        const cylinderGeo = new THREE.CylinderGeometry(0.1, 0.1, length, 6);
+        // 2. Толстая труба (цилиндр) для линии Юг-Север
+        const direction = new THREE.Vector3().subVectors(northPos, southPos);
+        const totalLength = direction.length();
+        const cylinderGeo = new THREE.CylinderGeometry(0.12, 0.12, totalLength, 8);
         const cylinderMat = new THREE.MeshStandardMaterial({ color: 0xff6666 });
         const cylinder = new THREE.Mesh(cylinderGeo, cylinderMat);
-        cylinder.position.copy(points[0]);
-        cylinder.position.add(points[1]).multiplyScalar(0.5);
+        cylinder.position.copy(southPos);
+        cylinder.position.add(northPos).multiplyScalar(0.5);
         cylinder.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), direction.clone().normalize());
-        scene.add(cylinder);
+        compassRoseGroup.add(cylinder);
         
-        // Сферы на концах
-        const sphereMat = new THREE.MeshStandardMaterial({ color: 0xff6600 });
-        const southSphere = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 16), sphereMat);
-        southSphere.position.set(south.x, 0.2, south.z);
-        scene.add(southSphere);
+        // 3. Дополнительная линия ЗАПАД-ВОСТОК (для красоты розы, середина в центре)
+        const eastLen = 20; // метров
+        const eastDeg = eastLen * METER_TO_DEG;
+        const eastPoint = gpsToMeters(CENTER_LAT, CENTER_LON + eastDeg, ref.lat, ref.lon);
+        const westPoint = gpsToMeters(CENTER_LAT, CENTER_LON - eastDeg, ref.lat, ref.lon);
+        const crossPoints = [
+            new THREE.Vector3(westPoint.x, 0, westPoint.z),
+            new THREE.Vector3(centerPos.x, 0, centerPos.z),
+            new THREE.Vector3(eastPoint.x, 0, eastPoint.z)
+        ];
+        const crossGeo = new THREE.BufferGeometry().setFromPoints(crossPoints);
+        const crossMat = new THREE.LineBasicMaterial({ color: 0x44aaff });
+        const crossLine = new THREE.Line(crossGeo, crossMat);
+        compassRoseGroup.add(crossLine);
         
-        const northSphere = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 16), sphereMat);
-        northSphere.position.set(north.x, 0.2, north.z);
-        scene.add(northSphere);
+        // 4. Круг в центре (основа розы)
+        const circlePoints = [];
+        const radius = 1.2;
+        const segments = 64;
+        for (let i = 0; i <= segments; i++) {
+            const angle = (i / segments) * Math.PI * 2;
+            const x = centerPos.x + Math.cos(angle) * radius;
+            const z = centerPos.z + Math.sin(angle) * radius;
+            circlePoints.push(new THREE.Vector3(x, 0.05, z));
+        }
+        const circleGeo = new THREE.BufferGeometry().setFromPoints(circlePoints);
+        const circleMat = new THREE.LineBasicMaterial({ color: 0xffaa44 });
+        const circle = new THREE.LineLoop(circleGeo, circleMat);
+        compassRoseGroup.add(circle);
         
-        // Видеофон (камера)
+        // 5. Сфера в центре (золотая)
+        const centerSphere = new THREE.Mesh(
+            new THREE.SphereGeometry(0.5, 32, 32),
+            new THREE.MeshStandardMaterial({ color: 0xffaa44, emissive: 0x442200, metalness: 0.7 })
+        );
+        centerSphere.position.set(centerPos.x, 0.2, centerPos.z);
+        compassRoseGroup.add(centerSphere);
+        
+        // 6. Метки сторон света (CSS2D - текстовые, всегда повёрнуты к камере)
+        // Для простоты используем дополнительные HTML-элементы через CSS2DRenderer
+        // Но чтобы не усложнять, добавим маленькие сферы с цветами: Юг - красный, Север - синий, Запад - зелёный, Восток - жёлтый
+        const markerMatSouth = new THREE.MeshStandardMaterial({ color: 0xff3333 });
+        const southMarker = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 16), markerMatSouth);
+        southMarker.position.set(southPos.x, 0.5, southPos.z);
+        compassRoseGroup.add(southMarker);
+        
+        const markerMatNorth = new THREE.MeshStandardMaterial({ color: 0x33ff33 });
+        const northMarker = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 16), markerMatNorth);
+        northMarker.position.set(northPos.x, 0.5, northPos.z);
+        compassRoseGroup.add(northMarker);
+        
+        const markerMatEast = new THREE.MeshStandardMaterial({ color: 0xffaa33 });
+        const eastMarker = new THREE.Mesh(new THREE.SphereGeometry(0.25, 16, 16), markerMatEast);
+        eastMarker.position.set(eastPoint.x, 0.4, eastPoint.z);
+        compassRoseGroup.add(eastMarker);
+        
+        const markerMatWest = new THREE.MeshStandardMaterial({ color: 0x33aaff });
+        const westMarker = new THREE.Mesh(new THREE.SphereGeometry(0.25, 16, 16), markerMatWest);
+        westMarker.position.set(westPoint.x, 0.4, westPoint.z);
+        compassRoseGroup.add(westMarker);
+        
+        scene.add(compassRoseGroup);
+        
+        // --- Простые текстовые метки через HTML (CSS2D проще)
+        // Используем CSS2DRenderer для текста
+        import { CSS2DRenderer, CSS2DObject } from 'https://unpkg.com/three@0.128.0/examples/jsm/renderers/CSS2DRenderer.js';
+        
+        const labelRenderer = new CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        labelRenderer.domElement.style.left = '0px';
+        labelRenderer.domElement.style.pointerEvents = 'none';
+        document.body.appendChild(labelRenderer.domElement);
+        
+        function makeLabel(text, color, position, fontSize = '20px') {
+            const div = document.createElement('div');
+            div.textContent = text;
+            div.style.color = color;
+            div.style.fontSize = fontSize;
+            div.style.fontWeight = 'bold';
+            div.style.textShadow = '1px 1px 0 black';
+            div.style.background = 'rgba(0,0,0,0.5)';
+            div.style.padding = '2px 8px';
+            div.style.borderRadius = '20px';
+            div.style.border = `2px solid ${color}`;
+            div.style.backdropFilter = 'blur(4px)';
+            const label = new CSS2DObject(div);
+            label.position.copy(position);
+            return label;
+        }
+        
+        const southLabel = makeLabel('ЮГ', '#ff8888', new THREE.Vector3(southPos.x, 1.0, southPos.z), '18px');
+        const northLabel = makeLabel('СЕВЕР', '#88ff88', new THREE.Vector3(northPos.x, 1.0, northPos.z), '18px');
+        const eastLabel = makeLabel('ВОСТОК', '#ffaa66', new THREE.Vector3(eastPoint.x, 0.9, eastPoint.z), '16px');
+        const westLabel = makeLabel('ЗАПАД', '#66aaff', new THREE.Vector3(westPoint.x, 0.9, westPoint.z), '16px');
+        const centerLabel = makeLabel('●', '#ffaa44', new THREE.Vector3(centerPos.x, 0.8, centerPos.z), '28px');
+        
+        scene.add(southLabel);
+        scene.add(northLabel);
+        scene.add(eastLabel);
+        scene.add(westLabel);
+        scene.add(centerLabel);
+        
+        // --- Видеофон (камера) ---
         const video = document.createElement('video');
         video.autoplay = true;
         video.playsInline = true;
@@ -134,33 +278,83 @@
                 const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
                 video.srcObject = stream;
                 await video.play();
-                statusDiv.innerHTML = '✅ Камера работает. Ждём компас...';
+                statusDiv.innerHTML = '✅ Камера работает. Роза ветров в центре. Линия ЮГ→СЕВЕР';
             } catch(e) {
-                statusDiv.innerHTML = '❌ Нет доступа к камере';
+                statusDiv.innerHTML = '❌ Нет доступа к камере: ' + e.message;
                 console.error(e);
             }
         }
         
-        // Компас
+        // --- Компас и поворот камеры ---
         let alpha = 0;
-        window.addEventListener('deviceorientation', (e) => {
-            alpha = e.alpha || 0;
-            statusDiv.innerHTML = `🧭 Компас: ${Math.round(alpha)}° | Линия Юг→Север`;
-        });
+        let beta = 0;
+        let gamma = 0;
+        let orientationReady = false;
         
-        // Анимация
+        function handleOrientation(e) {
+            alpha = e.alpha || 0;
+            beta = e.beta || 0;
+            gamma = e.gamma || 0;
+            orientationReady = true;
+            compassDiv.innerHTML = `🧭 ${Math.round(alpha)}°`;
+        }
+        
+        function requestOrientation() {
+            if (DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                statusDiv.innerHTML = '📱 Нажмите на экран для разрешения доступа к датчикам';
+                const onClick = async () => {
+                    try {
+                        await DeviceOrientationEvent.requestPermission();
+                        window.addEventListener('deviceorientation', handleOrientation);
+                        statusDiv.innerHTML = '✅ Датчики активны';
+                        document.removeEventListener('click', onClick);
+                    } catch(e) {
+                        statusDiv.innerHTML = '❌ Разрешение отклонено';
+                    }
+                };
+                document.addEventListener('click', onClick);
+            } else {
+                window.addEventListener('deviceorientation', handleOrientation);
+                statusDiv.innerHTML = '🟡 Датчики активны (если есть компас)';
+            }
+        }
+        
+        // Плавное обновление камеры
+        let currentAlpha = 0;
+        
+        function updateCamera() {
+            if (!orientationReady) return;
+            currentAlpha = currentAlpha * 0.9 + alpha * 0.1;
+            // Поворачиваем камеру: север должен быть в направлении -Z
+            camera.rotation.order = 'YXZ';
+            camera.rotation.x = -beta * Math.PI / 180;
+            camera.rotation.z = -gamma * Math.PI / 180;
+            camera.rotation.y = -currentAlpha * Math.PI / 180;
+        }
+        
+        // --- Анимация ---
         function animate() {
-            camera.rotation.y = -alpha * Math.PI / 180;
+            updateCamera();
             renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
             requestAnimationFrame(animate);
         }
         
         startCamera();
+        requestOrientation();
         animate();
+        
+        // Адаптация под размер экрана
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        });
         
         // Проверка HTTPS
         if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
-            statusDiv.innerHTML = '⚠️ Нужен HTTPS. Используйте GitHub Pages';
+            statusDiv.innerHTML = '⚠️ Нужен HTTPS (GitHub Pages даёт его автоматически)';
         }
     </script>
 </body>
